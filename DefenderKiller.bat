@@ -3,55 +3,71 @@
 :: https://win10tweaker.ru/forum/topic/defenderkiller | https://github.com/oatmealcookiec/DefenderKiller
 
 :: Unlocker by Eject - https://win10tweaker.ru/forum/topic/unlocker
+:: Driver by Eject для удаления служб и драйверов
 :: StopDefender - https://github.com/lab52io/StopDefender [Not Updated...]
 :: NSudo - https://github.com/M2TeamArchived/NSudo/releases
 :: nhmb - https://nhutils.ru/blog/nhmb/
-:: LGPO - https://www.microsoft.com/en-us/download/details.aspx?id=55319
 :: Compressed2TXT - https://github.com/AveYo/Compressed2TXT
+:: 7Z - https://www.7-zip.org/
 
 :Start
 	@echo off
 	cls
 	Title DK
 	Color 0f
-	chcp 866 >nul	
-rem Проверяем, чтобы в пути не было скобок или восклицательного знака
+	chcp 866 >nul
 	if not exist "%~dp0Work" echo Не найдена рабочая папка Work рядом с программой, будет выполнен выход. && timeout /t 7 /nobreak >nul && exit
 	echo "%~dp0" | findstr /r "[()!]" >nul && echo Путь до .bat содержит недопустимые символы, исправьте путь и запустите программу повторно. && timeout /t 7 >nul && exit
 	SetLocal EnableDelayedExpansion
 	cd /d "%~dp0Work"
 	reg query "HKU\S-1-5-19" >nul 2>&1 || nircmd elevate "%~f0" && exit
 
-rem Перезапуск от TrustedInstaller
-	if /i "%USERNAME%" neq "%COMPUTERNAME%$" NSudoLC -U:T -P:E -UseCurrentConsole %0 && exit
-
 rem Установка переменных
 	set "ch=cecho.exe"
 	set "ArgNsudo="
-	set "LGPOtemp=LGPO-temp.txt"
+	set "MainFolder1="
+	set "MainFolder2="
+	set "ProcList="
 	set "DefenderKey=HKLM\Software\Policies\Microsoft\Windows Defender"
 
-rem Версия и дата программы / Размеры. Первое число - ширина, второе - высота
-	set Version=12.5
-	set DateProgram=27.08.24
-	Mode 80,46
-	nircmd win center process cmd.exe & nircmd win settext foreground "DK | v. %Version% | %DateProgram% | By Vlado"
+	qprocess WindowsTerminal.exe >nul 2>&1 && (
+		%ch% {04} DefenderKiller открыт в Терминале{\n #}
+		reg add "HKCU\Console\%%%%Startup" /v "DelegationConsole" /t REG_SZ /d "{B23D10C0-E52E-411E-9D5B-C09FDF709C7D}" /f >nul
+		reg add "HKCU\Console\%%%%Startup" /v "DelegationTerminal" /t REG_SZ /d "{B23D10C0-E52E-411E-9D5B-C09FDF709C7D}" /f >nul
+		%ch% {04} Перезапустите программу для исправления{\n #}&& timeout /t 7 /nobreak >nul && exit
+	)
+
+rem Перезапуск от TrustedInstaller
+	if /i "%USERNAME%" neq "%COMPUTERNAME%$" NSudoLC -U:T -P:E -UseCurrentConsole %0 && exit
 	
-rem Удаляем ненужные файлы и проверка нужных файлов в Work - nhmb.exe, UnlockerUnpack
+rem Версия OS
+	set "NumberWin="
+	for /f "tokens=4 delims=[] " %%v in ('ver') do set "NumberWin=%%v"
+
+rem Версия и дата программы / Размеры. Первое число - ширина, второе - высота
+	set Version=14.1
+	set DateProgram=30.09.24
+	Mode 80,49
+	nircmd win center process cmd.exe & nircmd win settext foreground "DK | v. %Version% - %DateProgram% | %NumberWin% | By Vlado"
+
 	if exist "%SystemDrive%\latestVersion.bat" del /q "%SystemDrive%\latestVersion.bat"
-	if exist 7z.exe del /q 7z.exe
-	if exist ToolsForDK.zip del /q ToolsForDK.zip
 	if not exist nhmb.exe %ch% {0c} Нет файла nhmb.exe в папке Work.{\n} Перекачайте полный архив DefenderKiller.{\n #}&& timeout /t 5 >nul && exit
-	if not exist UnlockerUnpack.bat %ch% {0c} Нет файла UnlockerUnpack.bat в папке Work.{\n} Перекачайте полный архив DefenderKiller.{\n #}&& timeout /t 5 >nul && exit
+	if not exist 7z.exe %ch% {0c} Нет файла 7z.exe в папке Work. Перекачайте полный архив DefenderKiller{\n #}&& timeout /t 7 >nul && exit
+	if not exist DKTools.zip %ch% {0c} Нет файла DKTools.zip в папке Work. Перекачайте полный архив DefenderKiller{\n #}&& timeout /t 7 >nul && exit
 	
 rem Аргумент для NSUDO в зависимости от состояния UAC [C - если отключён / E - если включён]
 	reg query "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System" /v "EnableLUA" | find /i "0x0" >nul 2>&1 && set "ArgNsudo=C" || set "ArgNsudo=E"
-	if not exist "%SystemRoot%\System32\smartscreen.exe" (set "SmartScreen=0a") else (set "SmartScreen=0c")
-	if not exist "%SystemRoot%\System32\gpedit.msc" set "NoGP=Yes"
 
-rem Процессы / Службы и Драйвера
-	for %%p in (MsMpEng SgrmBroker uhssvc NisSrv MpCmdRun MPSigStub SecHealthUI SecurityHealthSystray SecurityHealthService SecurityHealthHost MpDefenderCoreService) do qprocess "%%~p.exe" >nul 2>&1 && set "%%~p=0c" || set "%%~p=0a"
-	for %%x in (WinDefend MDCoreSvc WdNisSvc Sense wscsvc SgrmBroker SecurityHealthService webthreatdefsvc webthreatdefusersvc WdNisDrv WdBoot WdFilter SgrmAgent wtd MsSecWfp MsSecFlt MsSecCore) do sc query "%%~x" >nul 2>&1 && set "%%~x=0c" || set "%%~x=0a"
+rem Процессы / службы, драйвера
+	for /f "skip=3 tokens=1" %%a in ('tasklist') do set "ProcList=!ProcList! %%a "
+	for %%p in (SmartScreen MsMpEng SgrmBroker MsSense uhssvc NisSrv MpCmdRun MPSigStub SecurityHealthSystray SecurityHealthService SecurityHealthHost MpDefenderCoreService) do (
+	if "!ProcList!"=="!ProcList:%%p.exe =!" (set "%%~pP=0a") else (set "%%~pP=0c"))
+
+	for %%x in (WinDefend MDCoreSvc WdNisSvc Sense wscsvc SgrmBroker SecurityHealthService webthreatdefsvc webthreatdefusersvc WdNisDrv WdBoot WdFilter SgrmAgent MsSecWfp MsSecFlt MsSecCore) do reg query "HKLM\System\CurrentControlSet\Services\%%~x" >nul 2>&1 && set "%%~x=0c" || set "%%~x=0a"
+	
+rem 2 главные папки
+	if exist "%AllUsersProfile%\Microsoft\Windows Defender" (set "MainFolder1=04") else (set "MainFolder1=0a")
+	if exist "%SystemDrive%\Program Files\Windows Defender" (set "MainFolder2=04") else (set "MainFolder2=0a")
 
 rem Путь к папке задач планировщика
 	set PathTask=%SystemRoot%\System32\Tasks\Microsoft\Windows\Windows Defender
@@ -59,157 +75,113 @@ rem Путь к папке задач планировщика
 	if not exist "%PathTask%\Windows Defender Scheduled Scan" (set "Scan=0a") else (set "Scan=0c")
 	if not exist "%PathTask%\Windows Defender Verification" (set "Verification=0a") else (set "Verification=0c")
 	if not exist "%PathTask%\Windows Defender Cleanup" (set "Cleanup=0a") else (set "Cleanup=0c")
-	if not exist "%SystemRoot%\System32\Tasks\Microsoft\Windows\AppID\SmartScreenSpecific" (set "SmartScreenSpecific=0a") else (set "SmartScreenSpecific=0c")
 
-	%ch% {09}Состояние процессов защитника:{\n #}
-	%ch% {%SmartScreen%} SmartScreen {08}[Windows Defender SmartScreen]{\n #}
-	%ch% {%MsMpEng%} MsMpEng    {08} [Antimalware Service Executable]{\n #}
-	%ch% {%SgrmBroker%} SgrmBroker  {08}[Брокер среды выполнения System Guard]{\n #}
-	%ch% {%uhssvc%} uhssvc     {08} [Microsoft Update Health Service]{\n #}
-	%ch% {%NisSrv%} NisSrv     {08} [Network Realtime Inspection]{\n #}
-	%ch% {%MpCmdRun%} MpCmdRun   {08} [Microsoft malware protection]{\n #}
-	%ch% {%MPSigStub%} MPSigStub{08}   [Malware Protection Signature Update Stub]{\n #}
-	%ch% {%SecHealthUI%} SHealthUI{08}   [Окно Безопасность Windows]{\n #}
-	%ch% {%SecurityHealthSystray%} HealthTray{08}  [Иконка Безопасности в трее]{\n #}
-	%ch% {%SecurityHealthService%} HealthServ{08}  [SecurityHealthService]{\n #}
-	%ch% {%SecurityHealthHost%} HealthHost{08}  [SecurityHealthHost]{\n #}
-	%ch% {%MpDefenderCoreService%} CoreService{#}{08} [Antimalware Core Service]{\n #}{\n #}
+	%ch% {09}Процессы:{\n #}
+	%ch% {%MpCmdRunP%} MpCmdRun {%SmartScreenP%}SmartScreen {%SecurityHealthSystrayP%}SecurityHealthSystray {%SecurityHealthHostP%}SecurityHealthHost {%uhssvcP%}uhssvc{\n #}
+	
+	%ch% {\n}{09}Службы и их процессы:{\n #}
+	%ch% {%WinDefend%} WinDefend {08} ^> {%MsMpEngP%}MsMpEng.exe{\n #}
+	%ch% {%MDCoreSvc%} MDCoreSvc {08} ^> {%MpDefenderCoreServiceP%}MpDefenderCoreService.exe{\n #}
+	%ch% {%WdNisSvc%} WdNisSvc {08}  ^>{%NisSrvP%} NisSrv.exe{\n #}
+	%ch% {%Sense%} Sense {08}     ^> {%MsSenseP%}MsSense.exe{\n #}
+	%ch% {%SgrmBroker%} SgrmBroker {08}^> {%SgrmBrokerP%}SgrmBroker.exe{\n #}
+	%ch% {%SecurityHealthService%} SecHealthS {08}^> {%SecurityHealthServiceP%}SecurityHealthService.exe{\n #}
+	%ch% {\n}{%webthreatdefsvc%} webthreatdefsvc {%webthreatdefusersvc%}webthreatdefusersvc {%wscsvc%}wscsvc{\n #}
+	
+	%ch% {\n}{09}Драйвера:{\n #}
+	%ch% {%WdFilter%} WdFilter {%WdBoot%}WdBoot {%WdNisDrv%}WdNisDrv {%MsSecWfp%}MsSecWfp {%MsSecFlt%}MsSecFlt {%MsSecCore%}MsSecCore {%SgrmAgent%}SgrmAgent{\n #}
+	
+	%ch% {\n}{09}Главные папки:{\n #}
+	%ch% {%MainFolder1%} %AllUsersProfile%\Microsoft\Windows Defender{\n #}
+	%ch% {%MainFolder2%} %SystemDrive%\Program Files\Windows Defender{\n #}
+	
+	%ch% {\n}{09}Задания в планировщике:{\n #}
+	%ch% {%Maintenance%} Cache Maintenance{#}{08} ^| {%Scan%}Scheduled Scan{#} {08}^| {%Verification%}Verification{#} {08}^| {%Cleanup%}Cleanup{\n #}
 
-	%ch% {09}Состояние служб и драйверов защитника:{\n #}
-	%ch% {%MDCoreSvc%} MDCoreSvc  {08} [Основная служба Microsoft Defender]{\n #}
-	%ch% {%WinDefend%} WinDefend  {08} [Служба Антивирусная программа Защитника Windows]{\n #}
-	%ch% {%WdNisSvc%} WdNisSvc {08}   [Служба проверки сети Windows Defender Antivirus]{\n #}
-	%ch% {%Sense%} Sense      {08} [Служба Advanced Threat Protection]{\n #}
-	%ch% {%wscsvc%} wscsvc      {08}[Служба Центр обеспечения безопасности]{\n #}
-	%ch% {%SgrmBroker%} SgrmBroker  {08}[Служба Брокер мониторинга среды выполнения System Guard]{\n #}
-	%ch% {%SecurityHealthService%} SHealthSer  {08}[Служба Центр безопасности Защитника Windows]{\n #}
-	%ch% {%webthreatdefsvc%} webthreat   {08}[Служба защиты от Веб-угроз - webthreatdefsvc]{\n #}
-	%ch% {%webthreatdefusersvc%} webthreatu  {08}[Служба защиты пользоват. от Веб-угроз - webthreatdefusersvc]{\n #}
-	
-	%ch% {%WdNisDrv%} WdNisDrv    {08}[Драйвер WD Network Inspection Driver]{\n #}
-	%ch% {%WdBoot%} WdBoot      {08}[Драйвер WD Antivirus Boot Driver]{\n #}
-	%ch% {%WdFilter%} WdFilter{#}{08}    [Драйвер WD Antivirus Mini-Filter Driver]{\n #}
-	%ch% {%SgrmAgent%} SgrmAgent{#}{08}   [Драйвер System Guard Runtime Monitor Agent Driver]{\n #}
-	%ch% {%wtd%} wtd{#}{08}         [Драйвер WTD Driver]{\n #}
-	%ch% {%MsSecWfp%} MsSecWfp{#}{08}    [Драйвер Microsoft Security WFP Callout Driver]{\n #}
-	%ch% {%MsSecFlt%} MsSecFlt{#}{08}    [Драйвер Security Events Component Minifilter]{\n #}
-	%ch% {%MsSecCore%} MsSecCore{#}{08}   [Драйвер Microsoft Security Core Boot Driver]{\n #}
-	
-	echo.
-
-	%ch% {09}Состояние заданий в планировщике:{\n #}
-	%ch% {%Maintenance%} Windows Defender Cache Maintenance{\n #}
-	%ch% {%Scan%} Windows Defender Scheduled Scan{\n #}
-	%ch% {%Verification%} Windows Defender Verification{\n #}
-	%ch% {%Cleanup%} Windows Defender Cleanup{\n #}
-	%ch% {%SmartScreenSpecific%} SmartScreenSpecific{\n #}
-	
-	echo.
-	
-	%ch% {0f} 1 - {04}Удалить Защитник{\n #}
+	%ch% {\n}{0f} 1 - {04}Удалить Защитник{\n #}
 	%ch% {0f} 2 - {08}Проверить состояние папок и файлов Защитника{\n #}
 	%ch% {0f} 3 - {08}Проверить обновления{\n #}
 	%ch% {0f} 4 - {0e}Восстановление, {0c}удаление Безопасности из пуска{\n #}
-	
+	%ch% {0f} 5 - {0b}Discord-сервер{\n #}
+	%ch% {\n}
+
 	set "input="
-	set /p input=
-	if not defined input   goto Start
+	set /p input=">>>"
+	if not defined input  goto Start
 	if "%input%"=="1"  cls && goto DeleteDefender
 	if "%input%"=="2"  cls && goto Catalogs
 	if "%input%"=="3"  cls && goto CheckUpdate
 	if "%input%"=="4"  cls && goto ManageDefender
+	if "%input%"=="5"  NSudoLC -U:%ArgNsudo% -ShowWindowMode:Hide cmd.exe /c start https://discord.gg/X5VBmJB3aE & goto Start
 	cls & %ch%    {0c}Такой функции не существует{\n #}
 	timeout /t 2 >nul && goto Start
 
 :DeleteDefender
-rem Проверка разрядности
-	set xOS=x64& (if "%processor_architecture%"=="x86" if not defined PROCESSOR_ARCHITEW6432 Set xOS=x86)
-
-rem Свободное место на диске с помощью vbs
+	call :AddExclusion
+	7z x -aoa -bso0 -bsp1 "DKTools.zip" -p"DK"
+	
+rem Свободное место vbs
 	reg delete "HKLM\Software\Microsoft\Windows Script Host\Settings" /v "Enabled" /f >nul 2>&1
 	set "sFreeSize=" & set "sFreeSize1=" & set "CountFreeSize="
-	echo Set objWMIService = GetObject("winmgmts:\\.\root\cimv2") > temp.vbs
-	echo Set colItems = objWMIService.ExecQuery^ _ >> temp.vbs
-	echo    ("Select FreeSpace from Win32_LogicalDisk Where DeviceID = '%SystemDrive%'") >> temp.vbs
-	echo For Each objItem in colItems >> temp.vbs
-	echo    FreeMegaBytes = CLng(objItem.FreeSpace / 1048576) >> temp.vbs
-	echo Next >> temp.vbs
-	echo WScript.Echo FreeMegaBytes >> temp.vbs
-	for /f %%i in ('cscript //nologo temp.vbs') do set sFreeSize=%%i
+	echo Set objWMIService = GetObject("winmgmts:\\.\root\cimv2") > DiskSpace.vbs
+	echo Set colItems = objWMIService.ExecQuery^ _ >> DiskSpace.vbs
+	echo    ("Select FreeSpace from Win32_LogicalDisk Where DeviceID = '%SystemDrive%'") >> DiskSpace.vbs
+	echo For Each objItem in colItems >> DiskSpace.vbs
+	echo    FreeMegaBytes = CLng(objItem.FreeSpace / 1048576) >> DiskSpace.vbs
+	echo Next >> DiskSpace.vbs
+	echo WScript.Echo FreeMegaBytes >> DiskSpace.vbs
+	for /f %%i in ('cscript //nologo DiskSpace.vbs') do set sFreeSize=%%i
 
-rem Если существует Windows Defender,
-	if exist "%AllUsersProfile%\Microsoft\Windows Defender" (
+	sc create DKServicesRemover type= kernel binPath= "%~dp0Work\ServiceWDDel.sys" >nul 2>&1
 
-rem Если не существует ветки реестра защитника, значит, он уже удалён. Пропуск создания копии.
-	reg query "HKLM\Software\Microsoft\Windows Defender" >nul 2>&1 || goto SkipCreateBackup
-	
-rem Проверяем, есть ли резервная копия. Если резервной копии нет - предлагаем создать.
-	if not exist "%SystemDrive%\WDefenderBackup" (
-		nhmb "Создать резервную копию?\n\nВыбирайте нет, если Вы не обновляте Windows." "Backup" "Warning|YesNo|DefButton1"
-		if errorlevel 7 goto SkipCreateBackup
-		if errorlevel 6 call :CreateBackupDefender)
-	
-:SkipCreateBackup
-rem SmartScreen / Уведомления от центра безопасности. NSudo - для понижения прав, т.к. эта консоль запущена от TI и ветка HKCU для TI.
-	reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.SecurityAndMaintenance" /v "Enabled" /t REG_DWORD /d "0" /f >nu
-	reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "SmartScreenEnabled" /t REG_SZ /d "Off" /f >nul
-	
-	NSudoLC -U:%ArgNsudo% -ShowWindowMode:Hide cmd.exe /c reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\AppHost" /v "EnableWebContentEvaluation" /t REG_DWORD /d "0" /f >nul
-	NSudoLC -U:%ArgNsudo% -ShowWindowMode:Hide cmd.exe /c reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.SecurityAndMaintenance" /v "Enabled" /t REG_DWORD /d "0" /f >null
-
-rem MSRT - Средство удаления вредоносных программ от Microsoft. [Не отправлять отчёты от MSRT/Отключить получение обновлений для MSRT]
-	reg add "HKLM\Software\Policies\Microsoft\MRT" /v "DontReportInfectionInformation" /t REG_DWORD /d "1" /f >nul
-	reg add "HKLM\Software\Policies\Microsoft\MRT" /v "DontOfferThroughWUAU" /t REG_DWORD /d "1" /f >nul
-	)
-	
-rem Пропуск использования Unlocker, если обе папки уже удалены
+rem Пропуск Unlocker, если нет папок Defender
 		if not exist "%AllUsersProfile%\Microsoft\Windows Defender" (
     if not exist "%SystemDrive%\Program Files\Windows Defender" (
-        goto DefenderAlreadyDeleted
+        goto SkipUnlocker
 		)
 	)
 
-rem ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-rem Добавляем в исключения [в методе есть проверка на повторное добавление в искл.], Распаковка Unlocker с помощью .bat Compressed2TXT
-	call :AddExclusion
-	nircmd win settext foreground "DK"
-	for %%x in (MpCmdRun MpDefenderCoreService MsMpEng SecurityHealthSystray SecurityHealthService SecurityHealthHost smartscreen SgrmBroker SecHealthUI uhssvc NisSrv MPSigStub MSASCuiL MRT) do nircmd killprocess "%%~x"
-	NSudoLC -U:P -ShowWindowMode:Hide -Wait UnlockerUnpack.bat
+rem Пропускаем создание копии, если нет ветки [было удаление хотя бы раз]
+	reg query "HKLM\Software\Microsoft\Windows Advanced Threat Protection" >nul 2>&1 || goto StartUnlockerAndSkipBackup
 	
-	%ch%    {08} Проводник завершён{\n #}
-	NSudoLC -U:%ArgNsudo% -ShowWindowMode:Hide -Wait cmd.exe /c taskkill /f /im explorer.exe >nul 2>&1
-	%ch%    {0c} Выполняем удаление с помощью Unlocker by Eject{\n #}{\n #}
+	%ch% {0c} Используя программу, Вы принимаете, что удаляете компонент Безопасности...{\n #}
+	%ch% {04} Не используйте DK, если не понимаете зачем это нужно^^!{\n #}{\n #}
+	
+	if not exist "%SystemDrive%\WDefenderBackup" (
+			nhmb "Создать резервную копию?\n\nМожно пропустить, если не обновляте Windows и защитник не нужен в будущем." "Backup" "Warning|YesNo|DefButton1"
+			if errorlevel 7 goto StartUnlockerAndSkipBackup
+			if errorlevel 6 call :CreateBackupDefender)
+			
+rem После /unlock в создании копии долгий запуск приложений. Старт службы исправляет это.
+	net start WinDefend >nul 2>&1
+	sc start WinDefend >nul 2>&1
+
+:StartUnlockerAndSkipBackup
+	sc query WinDefend >nul 2>&1 && (net start DKServicesRemover || %ch%    {0c} Драйвер не запустился{\n #}{0c}    Выключите SecureBoot в BIOS и повторите удаление{\n #}{\n #})
+	
+	REM NSudoLC -U:P -ShowWindowMode:Hide -Wait UnlockerUnpack.bat
+	NSudoLC -U:%ArgNsudo% -ShowWindowMode:Hide -Wait cmd.exe /c taskkill /f /im explorer.exe
+
+	%ch%    {0c} Удаляем Unlocker'ом by Eject{\n #}
+	%ch%    {08} Если долго висит здесь - перезапустите ПК{\n #}{\n #}
 	Unlocker /DeleteDefender
 
-:CheckFolder
-	if exist "%Temp%\IObitUnlocker\IObitUnlocker.exe" goto CheckFolder
-	
 rem Проверяем после удаления, остались ли папки. Если остались - выполняем повторное удаление с помощью Unlocker
 	for %%d in ("%AllUsersProfile%\Microsoft\Windows Security Health", "%AllUsersProfile%\Microsoft\Windows Defender", "%AllUsersProfile%\Microsoft\Windows Defender", "%AllUsersProfile%\Microsoft\Windows Defender") do (
 		if exist %%d (
 			%ch%    {08} Папка %%d не удалилась{\n #}
-			%ch%    {0c} Удаление %%d{\n #}{\n #}
+			%ch%    {0c} Повторное удаление{\n #}{\n #}
 			timeout /t 2 /nobreak >nul
 			Unlocker /DeleteDefender
 		)
 	)
-	
-	NSudoLC -U:%ArgNsudo% -ShowWindowMode:Hide cmd.exe /c start explorer.exe >nul 2>&1
-	
-rem Применяем основную политику по отключению защитника уже после удаления, если это не HOME версия, где нет оснастки групповых политик.
-rem Применение политики - необязательное действие на данном этапе, поскольку защитник удалён. Политика - 'пустышка'. Её применение необязательно.
-rem Требуется для того, чтобы другой софт, который проверяет состояние защитника по данному параметру считал, что защитник уже отключён.
-rem Применение этой политики с недавнего времени на Windows 11, возможно уже и Windows 10 невозможно перед удалением защитника, т.к. Windows при применении этой политики моментально замедляет запуск программ.
-rem Исследование - https://azuretothemax.net/2023/05/01/murdering-windows-11-performance-by-disabling-windows-defender-what-not-to-do/
-	if not defined NoGP (
-		call :LGPOFILE reg add "%DefenderKey%" /v "DisableAntiSpyware" /t REG_DWORD /d "1" /f
-		call :LGPO_APPLY >nul 2>&1
-		nircmd win activate process cmd.exe
-	)
 
+	NSudoLC -U:%ArgNsudo% -ShowWindowMode:Hide cmd.exe /c start explorer.exe
+	
 rem ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-:DefenderAlreadyDeleted
-	if exist "%AllUsersProfile%\Microsoft\Windows Defender" %ch%    {03} Удаляем папки и файлы Защитника{\n #}{\n #}
+:SkipUnlocker
+	%ch%    {03} Выполняется удаление{\n #}{\n #}
+	sc query DKServicesRemover | find /i "RUNNING" >nul 2>&1 || (sc query WinDefend >nul 2>&1 && (net start DKServicesRemover || %ch%    {0c} Драйвер не запустился{\n #}{0c}    Выключите SecureBoot в BIOS и повторите удаление{\n #}{\n #}))
 
 (
 rem Удаление папок
@@ -224,21 +196,7 @@ rem Удаление папок
 
 	for %%d in ("HealthAttestationClient" "SecurityHealth" "WebThreatDefSvc" "Sgrm") do (
 		rd /s /q "%SystemRoot%\System32\%%~d")
-
-rem Переименование файлов, которые могут мешать удалению
-	if exist "%AllUsersProfile%\Microsoft\Windows Defender\Platform" (
-		for /r "%AllUsersProfile%\Microsoft\Windows Defender\Platform" %%i in ("MpOAV.dll") do ren "%%i" "MpOAV.dll_fuck"
-		for /r "%AllUsersProfile%\Microsoft\Windows Defender\Platform" %%i in ("MpClient.dll") do ren "%%i" "MpClient.dll_fuck"
-		for /r "%AllUsersProfile%\Microsoft\Windows Defender\Platform" %%i in ("MsMpEng.exe") do ren "%%i" "MsMpEng.exe_fuck"
-		for /r "%AllUsersProfile%\Microsoft\Windows Defender\Platform" %%i in ("ProtectionManagement.dll") do ren "%%i" "ProtectionManagement.dll_fuck"
-	)
 	
-	if exist "%SystemDrive%\Program Files\Windows Defender" (
-		ren "%SystemDrive%\Program Files\Windows Defender\MpOAV.dll" "MpOAV.dll_fuck"
-		ren "%SystemDrive%\Program Files\Windows Defender\MpClient.dll" "MpClient.dll_fuck"
-		ren "%SystemDrive%\Program Files\Windows Defender\MsMpEng.exe" "MsMpEng.exe_fuck"
-	)
-
 	rd /s /q "%SystemRoot%\security\database"
 	rd /s /q "%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\Defender"
 	rd /s /q "%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\DefenderPerformance"
@@ -255,58 +213,38 @@ rem Переименование файлов, их удаление / SmartScreen.exe
 
 	del /f /q "%SystemRoot%\Containers\WindowsDefenderApplicationGuard.wim"
 	del /f /q "%SystemRoot%\Containers\serviced\WindowsDefenderApplicationGuard.wim"
-	
+
 	taskkill /f /im smartscreen.exe
 
 	for %%f in (
 		"SecurityHealthService.exe" "SecurityHealthService.exe_fuck" "SecurityHealthSystray.exe" "SecurityHealthHost.exe"
 		"SecurityHealthAgent.dll" "SecurityHealthSSO.dll" "SecurityHealthProxyStub.dll" "smartscreen.dll" "wscisvif.dll"
-		"wscproxystub.dll" "smartscreenps.dll" "smartscreenps.dll_fuck" "wscapi.dll" "wscapi.dll_fuck" 
-		"windowsdefenderapplicationguardcsp.dll" "wscsvc.dll" "SecurityHealthCore.dll" 
+		"wscproxystub.dll" "smartscreenps.dll" "smartscreenps.dll_fuck" "wscapi.dll" "wscapi.dll_fuck"
+		"windowsdefenderapplicationguardcsp.dll" "wscsvc.dll" "SecurityHealthCore.dll"
 		"SecurityHealthSsoUdk.dll" "SecurityHealthUdk.dll" "smartscreen.exe" "smartscreen.exedel"
 	) do del /f /q "%SystemRoot%\System32\%%~f"
 	
 	for %%f in (
-		"smartscreen.dll" "wscisvif.dll" "wscproxystub.dll" "smartscreenps.dll" "wscapi.dll" 
+		"smartscreen.dll" "wscisvif.dll" "wscproxystub.dll" "smartscreenps.dll" "wscapi.dll"
 		"windowsdefenderapplicationguardcsp.dll"
 	) do del /f /q "%SystemRoot%\SysWOW64\%%~f"
-	
-) >nul 2>&1
-	
-rem ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	if exist "%AllUsersProfile%\Microsoft\Windows Defender" (
-	%ch%    {03} Удаляем службы и драйвера{\n #}
-	%ch%    {0a} WinDefend, MDCoreSvc, SecurityHealthService{\n #}
-	%ch%    {0a} Sense, WdNisSvc, wscsvc, webthreatdefsvc{\n #}
-	%ch%    {0a} WdNisDrv, WdBoot, WdFilter, SgrmAgent, wtd, MsSecWfp, MsSecFlt, MsSecCore{\n #}{\n #}
-	)
-	
-	for %%x in (WinDefend MDCoreSvc WdNisSvc Sense wscsvc SgrmBroker SecurityHealthService webthreatdefsvc webthreatdefusersvc WdNisDrv WdBoot WdFilter SgrmAgent wtd MsSecWfp MsSecFlt MsSecCore) do (
-		sc stop "%%~x" >nul 2>&1
-		sc delete "%%~x" >nul 2>&1
-		reg delete "HKLM\System\CurrentControlset\Services\%%~x" /f >nul 2>&1
-		rd /s /q "%SystemRoot%\System32\drivers\wd" >nul 2>&1
-	)
 
-rem ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	if exist "%AllUsersProfile%\Microsoft\Windows Defender" (
-	%ch%    {03} Удаляем задания из планировщика{\n #}
-	%ch%    {0a} Windows Defender Cache Maintenance{\n #}
-	%ch%    {0a} Windows Defender Cleanup{\n #}
-	%ch%    {0a} Windows Defender Scheduled Scan{\n #}
-	%ch%    {0a} Windows Defender Verification{\n #}
-	%ch%    {0a} SmartScreenSpecific{\n #}{\n #}
+rem Службы / Драйвера
+	for %%x in (WinDefend MDCoreSvc WdNisSvc Sense wscsvc SgrmBroker SecurityHealthService webthreatdefsvc webthreatdefusersvc WdNisDrv WdBoot WdFilter SgrmAgent MsSecWfp MsSecFlt MsSecCore) do (
+		sc stop "%%~x"
+		sc delete "%%~x"
+		reg delete "HKLM\System\CurrentControlset\Services\%%~x" /f
 	)
-
-(
-rem Удаление задач планировщика
-	schtasks /Delete /TN "Microsoft\Windows\Windows Defender\Windows Defender Cache Maintenance" /f
-	schtasks /Delete /TN "Microsoft\Windows\Windows Defender\Windows Defender Cleanup" /f
-	schtasks /Delete /TN "Microsoft\Windows\Windows Defender\Windows Defender Scheduled Scan" /f
-	schtasks /Delete /TN "Microsoft\Windows\Windows Defender\Windows Defender Verification" /f
+	rd /s /q "%SystemRoot%\System32\drivers\wd"
+	
+rem Планировщик / Реестр
+	for %%s in (
+	"Windows Defender Cache Maintenance" "Windows Defender Cleanup" "Windows Defender Scheduled Scan" "Windows Defender Verification"
+	) do (
+		schtasks /Delete /TN "Microsoft\Windows\Windows Defender\%%~s" /f
+	)
 	schtasks /Delete /TN "Microsoft\Windows\AppID\SmartScreenSpecific" /f
 
-rem Удаление ветки Windows Defender из реестра
 	reg delete "HKLM\Software\Microsoft\Windows Defender" /f
 	reg delete "HKLM\Software\Microsoft\Windows Defender Security Center" /f
 	reg delete "HKLM\Software\Microsoft\Windows Advanced Threat Protection" /f
@@ -315,13 +253,13 @@ rem Удаление ветки Windows Defender из реестра
 	reg delete "HKLM\System\CurrentControlset\Control\WMI\Autologger\DefenderApiLogger" /f
 	reg delete "HKLM\System\CurrentControlset\Control\WMI\Autologger\DefenderAuditLogger" /f
 
-rem Очистка контекстного меню
+rem Контекстное меню
 	reg delete "HKCR\*\shellex\ContextMenuHandlers\EPP" /f
 	reg delete "HKCR\Directory\shellex\ContextMenuHandlers\EPP" /f
 	reg delete "HKCR\Drive\shellex\ContextMenuHandlers\EPP" /f
 	reg delete "HKLM\Software\Classes\CLSID\{09A47860-11B0-4DA5-AFA5-26D86198A780}" /f
 
-rem Удаление из автозапуска
+rem Автозапуск
 	reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "SecurityHealth" /f
 	reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" /v "SecurityHealth" /f
 	reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\Windows Defender" /f
@@ -332,91 +270,65 @@ rem Удаление надписи в параметрах
 rem Удаление журналов событий
 	reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\WINEVT\Channels\Microsoft-Windows-Windows Defender/WHC" /f
 	reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\WINEVT\Channels\NIS-Driver-WFP/Diagnostic" /f
+	reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\WINEVT\Channels\Microsoft-Windows-Windows Defender/Operational" /f
 
 rem Удаление из Панели управления элемента Windows Defender [Windows 8.1]
 	reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\ControlPanel\NameSpace\{D8559EB9-20C0-410E-BEDA-7ED416AECC2A}" /f
 	reg delete "HKCR\CLSID\{D8559EB9-20C0-410E-BEDA-7ED416AECC2A}" /f
 	
 ) >nul 2>&1
-
-rem ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-rem Если удалялась эта ветка ранее, пропускаем удаление папок из WinSxS
-	reg query "HKLM\Software\Microsoft\Windows\CurrentVersion\WINEVT\Channels\Microsoft-Windows-Windows Defender/Operational" >nul 2>&1 && (
-rem Проверяем создавался ли бэкап, если нет - спрашиваем точно ли удалить папки из WinSxS
-	reg query "HKLM\Software\DefenderKiller" >nul 2>&1 && (
-		echo >nul
-	) || (
-		nhmb "Вы не создали резервную копию.\n\nУдаление папок в WinSxS может нарушить установку некоторых обновлений Windows!\n\nУдалить папки Windows Defender из WinSxS?" "DK" "Warning|YesNo|DefButton2"
-	if errorlevel 7 (
-		%ch%    {0e} Вы пропустили удаление папок из WinSxS{\n #}
-		%ch%    {08} Этот вопрос появится при следующем удалении{\n #}{\n #}
-		goto FinishDelete)
-	if errorlevel 6 echo >nul
-	)
-	
-	%ch%    {03} Удаляем папки из WinSxS{\n #}{\n #}
-		for %%i in (windows-defender, windows-senseclient-service, windows-dynamic-image) do (	
-			for /f "usebackq delims=" %%d In (`2^>nul dir "%SystemRoot%\WinSxS\*%%i*" /S /B /A:D`) do rd /s /q "%%d" >nul 2>&1
-		)
-	)
-	
-rem Удаление ветки после удаления папок из WinSxS. Выполняется СТРОГО после удаления папок из WinSxS, чтобы удаление было всего 1 раз.
-	reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\WINEVT\Channels\Microsoft-Windows-Windows Defender/Operational" /f >nul 2>&1
 	
 rem ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 :FinishDelete
 rem Освобождённое место на диске
-	for /f %%i in ('cscript //nologo temp.vbs') do set sFreeSize1=%%i
+	for /f %%i in ('cscript //nologo DiskSpace.vbs') do set sFreeSize1=%%i
 	set /a CountFreeSize=%sFreeSize1% - %sFreeSize%
-	if defined CountFreeSize %ch%    {0c} %CountFreeSize% MB {0f}освобождено на диске %SystemDrive%\ после удаления{\n #}
+	if defined CountFreeSize %ch%    {0e} %CountFreeSize% MB {0f}освобождено на диске %SystemDrive%\ после удаления{\n #}
 	
 rem Удаляем Unlocker, его драйвер и остальные файлы. Драйвер восстановится сам, если используется установочный IObitUnlocker
 (
-	del /q Unlocker.exe
-	del /q DefenderStopx86.exe
-	del /q DefenderStopx64.exe
-	del /q temp.vbs
-	del /q "%SystemRoot%\unlocker.log"
-	rd /s /q "%AllUsersProfile%\IObit"
-	sc delete IObitUnlocker
+	del /q Unlocker.exe DiskSpace.vbs LGPO.exe UnlockerUnpack.bat ServiceWDDel.sys DelServ.sys
+	sc stop DKServicesRemover
+	sc delete DKServicesRemover
 ) >nul 2>&1
-		
-	if not exist "%AllUsersProfile%\Microsoft\Windows Defender" (
-		if not exist "%SystemDrive%\Program Files\Windows Defender" (
-			%ch%    {08} Ориентируйтесь на состояние папок {0f}- цифра 2 {08}и главное меню{\n #}
-			%ch%    {08} Зеленым - удалено. Красным - не удалено.{\n #}
-			%ch%    {0e} Если что-то не удалилось - перезагрузите ПК и повторите процесс удаления.{\n #}{\n #}
-			reg query "HKLM\System\CurrentControlset\Services\WinDefend" >nul 2>&1 && %ch%    {04} Все службы Защитника не удалены.{\n #}{08}    Повторите удаление после перезагрузки ПК.{\n #}{\n #}
-			%ch%    {0e} Если хотите удалить Безопасность из пуска, сделать это можно в пункте 4.{\n #}
-			%ch%    {08} Нажмите любую клавишу для возврата в главное меню.{\n #}
-			pause>nul && goto Start
-		)
-	)
+
+	%ch%    {08} Ориентируйтесь на состояние папок {0f}- цифра 2 {08}и главное меню{\n #}
+	reg query "HKLM\System\CurrentControlset\Services\WinDefend" >nul 2>&1 && %ch%    {04} Служба WinDefend не удалилась{\n #}
+	%ch%    {08} Безопасность из пуска можно удалить в пункте 4{\n #}
+	%ch%    {08} Нажмите любую клавишу для возврата в главное меню{\n #}
+	pause>nul && goto Start
 	
-	echo.
-	nhmb "Защитник Windows не удалён.\nЕсли появляется это сообщение несколько раз, выполните перезагрузку компьютера и повторите попытку удаления.\n\nПовторить удаление защитника?\n" "DK" "Information|YesNo"
-	if errorlevel 7 goto Start
-	if errorlevel 6 cls && set "AlreadyInExclusion=Yes" && goto DeleteDefender
-			
 rem ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 :ManageDefender
 	cls
 	2>nul reg query "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v "SettingsPageVisibility" | find /i "windowsdefender" >nul 2>&1 && set "HideSettigns={0a}скрыта" || set "HideSettigns={0c}отображается"
 
-	%ch% {\n #}{08} 1{#} - Восстановить защитник из копии{\n #}
-	%ch% {08} 2 - Применить/Откатить групповые политики{\n #}
-	%ch% {08} 3 - {0b}Удалить приложение Безопасность с подтверждением {08}[значок в пуске]{\n #}
-	%ch% {08} 4 - Страница Безопасность в параметрах %HideSettigns%{\n #}
-	echo.
-	%ch% {0e} [Enter]{#} - {08}Вернуться в главное меню{\n #}
+	%ch% {\n}{08} 1 - {0a}Восстановить защитник из копии{\n #}
+	%ch% {08} 2 - Удалить приложение Безопасность с подтверждением {08}[значок в пуске]{\n #}
+	%ch% {08} 3 - Страница Безопасность в параметрах %HideSettigns%{\n #}
+	%ch% {08} 4 - Удалить папки Защитника из хранилища WinSxS с подтверждением{\n #}
+	%ch% {\n}{0e} [Enter]{#} - {08}Вернуться в главное меню{\n #}
+	%ch% {\n}
 	set "input="
-	set /p input=
+	set /p input=">>>"
 	if not defined input	  goto Start
 	if "%input%"=="1"  goto RestoreDefender
-	if "%input%"=="2"  goto GroupPolicyWD
-	if "%input%"=="3"  goto SecHealthUI
-	if "%input%"=="4"  call :HideShowInSettings
+	if "%input%"=="2"  goto SecHealthUI
+	if "%input%"=="3"  call :HideShowInSettings
+	if "%input%"=="4"  goto WinSxSFolders
+	goto ManageDefender
+	
+:WinSxSFolders
+	%ch% {\n} Если не создавалась резервная копия, удаление папок из хранилища WinSxS сломает обновления Windows{\n #}
+	%ch% {08} 1.{#} {0c}Удалить папки{\n #}
+	%ch% {08} 2.{#} {08}Отмена{\n #}
+	choice /c 12 /n /m " "
+	if errorlevel 2 goto ManageDefender
+	
+	for %%i in (windows-defender, windows-senseclient-service, windows-dynamic-image) do (
+			for /f "usebackq delims=" %%d In (`2^>nul dir "%SystemRoot%\WinSxS\*%%i*" /S /B /A:D`) do rd /s /q "%%d" >nul 2>&1
+	)
 	goto ManageDefender
 
 :HideShowInSettings
@@ -446,89 +358,6 @@ rem Скрываем страницу из параметров
 		reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v SettingsPageVisibility /t REG_SZ /d "!NewSettings!" /f >nul
 	)
 	exit /b
-
-:GroupPolicyWD
-	if not exist "%SystemRoot%\System32\gpedit.msc" %ch%  {04} Не Найдено ГП, у Вас HOME версия, либо какая-то сборка.{\n #}&&timeout /t 3 >nul && goto ManageDefender
-	%ch% {\n #}{0f} 1{#} - {0f}Применить групповые политики защитника{\n #}
-	%ch% {0f} 2{#} - {0f}Откатить групповые политики защитника{\n #}
-	%ch% {0f} 3{#} - {08}Отменить выбор{\n #}
-	
-	set "input="
-	set /p input=
-	if not defined input   goto ManageDefender
-	if "%input%"=="1"  call :ApplyGP & timeout /t 1 /nobreak >nul & call :ApplyGP
-	if "%input%"=="2"  call :RestoreGP & timeout /t 1 /nobreak >nul & call :RestoreGP
-	if "%input%"=="3"  goto ManageDefender
-	goto ManageDefender
-	
-:ApplyGP
-	call :LGPOFILE reg add "%DefenderKey%" /v "ServiceKeepAlive" /t REG_DWORD /d "0" /f
-	call :LGPOFILE reg add "%DefenderKey%" /v "DisableRoutinelyTakingAction" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%" /v "AllowFastServiceStartup" /t REG_DWORD /d "0" /f
-	call :LGPOFILE reg add "%DefenderKey%\Real-Time Protection" /v "DisableRealtimeMonitoring" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Real-Time Protection" /v "DisableIOAVProtection" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Real-Time Protection" /v "DisableBehaviorMonitoring" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Real-Time Protection" /v "DisableScanOnRealtimeEnable" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Real-Time Protection" /v "DisableOnAccessProtection" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Real-Time Protection" /v "LocalSettingOverrideDisableRealtimeMonitoring" /t REG_DWORD /d "0" /f
-	call :LGPOFILE reg add "%DefenderKey%\Real-Time Protection" /v "LocalSettingOverrideDisableBehaviorMonitoring" /t REG_DWORD /d "0" /f
-	call :LGPOFILE reg add "%DefenderKey%\Real-Time Protection" /v "LocalSettingOverrideDisableIOAVProtection" /t REG_DWORD /d "0" /f
-	call :LGPOFILE reg add "%DefenderKey%\Spynet" /v "LocalSettingOverrideSpynetReporting" /t REG_DWORD /d "0" /f
-	call :LGPOFILE reg add "%DefenderKey%\Spynet" /v "**del.SpynetReporting" /t REG_SZ /d " " /f
-	call :LGPOFILE reg add "%DefenderKey%\Spynet" /v "SubmitSamplesConsent" /t REG_DWORD /d "2" /f
-	call :LGPOFILE reg add "%DefenderKey%\Signature Updates" /v "RealtimeSignatureDelivery" /t REG_DWORD /d "0" /f
-	call :LGPOFILE reg add "%DefenderKey%\Signature Updates" /v "DisableUpdateOnStartupWithoutEngine" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Signature Updates" /v "UpdateOnStartUp" /t REG_DWORD /d "0" /f
-	call :LGPOFILE reg add "%DefenderKey%\Signature Updates" /v "DisableScanOnUpdate" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Reporting" /v "DisableGenericRePorts" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Scan" /v "DisableCatchupFullScan" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Scan" /v "DisableCatchupQuickScan" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Scan" /v "DisableRemovableDriveScanning" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Scan" /v "DisableScanningNetworkFiles" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Scan" /v "DisableScanningMappedNetworkDrivesForFullScan" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "%DefenderKey%\Scan" /v "DisableArchiveScanning" /t REG_DWORD /d "1" /f
-	call :LGPOFILE reg add "HKLM\Software\Policies\Microsoft\Windows\System" /v "EnableSmartScreen" /t REG_DWORD /d "0" /f
-	call :LGPOFILE reg add "HKLM\Software\Policies\Microsoft\Windows\System" /v "**del.ShellSmartScreenLevel" /t REG_SZ /d " " /f
-	call :LGPOFILE reg add "HKLM\Software\Policies\Microsoft\MicrosoftEdge\PhishingFilter" /v "EnabledV9" /t REG_DWORD /d "0" /f
-	call :LGPO_APPLY
-	nircmd win activate process cmd.exe
-	exit /b
-
-:RestoreGP
-rem Восстановление политик
-	call :LGPOFILE reg delete "%DefenderKey%" /v "DisableAntiSpyware" /f
-	call :LGPOFILE reg delete "%DefenderKey%" /v "ServiceKeepAlive" /f
-	call :LGPOFILE reg delete "%DefenderKey%" /v "DisableRoutinelyTakingAction" /f
-	call :LGPOFILE reg delete "%DefenderKey%" /v "AllowFastServiceStartup" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Real-Time Protection" /v "DisableRealtimeMonitoring" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Real-Time Protection" /v "DisableIOAVProtection" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Real-Time Protection" /v "DisableBehaviorMonitoring" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Real-Time Protection" /v "DisableScanOnRealtimeEnable" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Real-Time Protection" /v "DisableOnAccessProtection" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Real-Time Protection" /v "LocalSettingOverrideDisableRealtimeMonitoring" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Real-Time Protection" /v "LocalSettingOverrideDisableBehaviorMonitoring" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Real-Time Protection" /v "LocalSettingOverrideDisableIOAVProtection" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Spynet" /v "LocalSettingOverrideSpynetReporting" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Spynet" /v "**del.SpynetReporting" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Spynet" /v "SubmitSamplesConsent" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Spynet" /v "**del.SubmitSamplesConsent" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Signature Updates" /v "RealtimeSignatureDelivery" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Signature Updates" /v "DisableUpdateOnStartupWithoutEngine" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Signature Updates" /v "UpdateOnStartUp" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Signature Updates" /v "DisableScanOnUpdate" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Reporting" /v "DisableGenericRePorts" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Scan" /v "DisableCatchupFullScan" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Scan" /v "DisableCatchupQuickScan" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Scan" /v "DisableRemovableDriveScanning" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Scan" /v "DisableScanningNetworkFiles" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Scan" /v "DisableScanningMappedNetworkDrivesForFullScan" /f
-	call :LGPOFILE reg delete "%DefenderKey%\Scan" /v "DisableArchiveScanning" /f
-	call :LGPOFILE reg delete "HKLM\Software\Policies\Microsoft\Windows\System" /v "EnableSmartScreen" /f
-	call :LGPOFILE reg delete "HKLM\Software\Policies\Microsoft\Windows\System" /v "**del.ShellSmartScreenLevel" /f
-	call :LGPOFILE reg delete "HKLM\Software\Policies\Microsoft\MicrosoftEdge\PhishingFilter" /v "EnabledV9" /f
-	call :LGPO_APPLY
-	nircmd win activate process cmd.exe
-	exit /b
 	
 :SecHealthUI
 	set "CurrentBuild="
@@ -543,8 +372,8 @@ rem Получаем SID
 	if not defined SID %ch%    {04} SID не был получен, отмена удаления приложений{\n #}&& timeout /t 2 /nobreak >nul && goto ManageDefender
 	
 	%ch% {\n} После удаления приложения зайти в настройки защитника будет {04}невозможно.{\n #}
-	%ch% {08} 1.{#} {0c}Удалить приложения{\n #}
-	%ch% {08} 2.{#} {08}Отмена{\n #}
+	%ch% {08} 1. {0c}Удалить приложения{\n #}
+	%ch% {08} 2. {08}Отмена{\n #}
 	choice /c 12 /n /m " "
 	if errorlevel 2 goto ManageDefender
 	
@@ -585,86 +414,66 @@ rem Эти папки можно удалять, восстанавливаются сами, если восстановить приложени
 
 rem ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 :AddExclusion
-	reg query "HKLM\Software\Microsoft\Windows Defender" >nul 2>&1 || set "AlreadyInExclusion=Yes" && exit /b
+	reg query "HKLM\Software\Microsoft\Windows Advanced Threat Protection" >nul 2>&1 || set "AlreadyInExclusion=Yes" && exit /b
 	
-	if defined AlreadyInExclusion %ch%    {08} Пропуск добавления в исключения Защитника [уже добавлено]{\n #}{\n #}&& exit /b
+	if defined AlreadyInExclusion %ch%    {08} Уже добавлено в исключения, пропуск{\n #}{\n #}&& exit /b
 	
-	%ch%    {03} Добавляем в исключения Защитника{\n #}{\n #}
+	%ch%    {03} Добавляем в исключения{\n #}{\n #}
 	NSudoLC -U:%ArgNsudo% -ShowWindowMode:Hide -Wait PowerShell "Get-PSDrive -PSProvider 'FileSystem' | ForEach-Object { Add-MpPreference -ExclusionPath $_.Root }" >nul 2>&1
 	set "AlreadyInExclusion=Yes"
 	timeout /t 2 /nobreak >nul
 	exit /b
+
+:AddExclusionRestore
+	echo Windows Registry Editor Version 5.00 > exclusions.reg
+	echo. >> exclusions.reg
+	echo [HKEY_LOCAL_MACHINE\Software\Microsoft\Windows Defender\Exclusions\Paths] >> exclusions.reg
+
+	for %%d in (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (
+    if exist %%d:\ (
+        echo "%%d:\\"=dword:00000000>> exclusions.reg)
+	)
+	if exist exclusions.reg reg import exclusions.reg >nul
+	del /q exclusions.reg >nul 2>&1
+	exit /b
 		
 rem ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-rem Создано WestLife/AutoSettings - https://disk.yandex.ru/d/CMqvcp1F3QiaWL
-:LGPOFILE
-	setlocal
-	if /i "%~2" NEQ "delete" if /i "%~2" NEQ "add" (
-	 %ch%     {0c}Пропуск добавления параметра в LGPO файл, неправильная команда{#}:{\n #} & %ch%    %1 {0e}%2{#} %3 {\n #} & exit /b)
-	 
-	if /i "%~2" EQU "delete" if "%~7" NEQ "" (
-	 %ch%     {0c}Пропуск добавления параметра в LGPO файл, ошибка в параметре{#}:{\n #} & echo.   %1 %2 %3 & %ch%        %4 %5 %6 {0e}%7 %8 %9 {\n #}& exit /b)
-	 
-	set "RegType=%~7:"
-	set "RegType=%RegType:REG=%"
-	set "RegType=%RegType:_=%"
-	set "RegType=%RegType:PAND=%"
-	if "%~3" NEQ "" for /f "tokens=1* delims=\" %%I in ("%~3") do ( set "RegKey=%%J"
-	 if /i "%%I" EQU "HKEY_LOCAL_MACHINE" (set Config=Computer) else if /i "%%I" EQU "HKLM" (set Config=Computer
-	 ) else if /i "%%I" EQU "HKEY_CURRENT_USER" (set Config=User) else if /i "%%I" EQU "HKCU" (set Config=User
-	 ) else (%ch%     {0c}Пропуск добавления параметра в LGPO файл, неверный раздел{#}: {0e}"%%I"{\n #} & %ch%    %1 %2 %3 {\n #} & exit /b))
-	 
-	if "%~9" NEQ "" set "Action=%RegType%%~9"
-	if /i "%~6" EQU "/d" set "Action=SZ:%~7"
-	if /i "%~2" EQU "delete" set "Action=DELETE"
-	if "%~5" EQU "" ( set "Action=DELETEALLVALUES" & set "ValueName=*" ) else ( set "ValueName=%~5" )
-	if /i "%~2" EQU "add" if /i "%~4" EQU "/f" set "Action=CREATEKEY" & set "ValueName=*"
-	(echo.%Config%& echo.%RegKey%& echo.%ValueName%& echo.%Action%& echo.)>>"%LGPOtemp%"
-	exit /b
-
-:LGPO_APPLY
-	taskkill /f /im mmc.exe >nul 2>&1
-	%ch% {04} Применение ГП{\n #}{\n #}&LGPO.exe /t "%LGPOtemp%" /q
-	if exist "%LGPOtemp%" del /f /q "%LGPOtemp%"
-	exit /b
-	
-rem ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 :CheckUpdate
+	cls
 rem Проверка наличия curl в папке Work или в папке System32 для проверки обновлений
-		if not exist "%SystemRoot%\System32\curl.exe" (
-	if not exist "%~dp0Work\curl.exe" (
-	%ch% {04} Программа curl не найдена в папке Work и в папке System32.{\n #}
-	%ch% {04} Поместите программу в папку System32 или в Work{\n #}
-	%ch% {08} Скачать можно тут - https://curl.se/windows/{\n #}
-	pause && exit))
+	if not exist "%SystemRoot%\System32\curl.exe" (
+		if not exist "%~dp0Work\curl.exe" (
+		%ch% {04} Программа curl не найдена в папке Work и в папке System32.{\n #}
+		%ch% {04} Поместите программу в папку System32 или в Work{\n #}
+		%ch% {08} Скачать можно тут - https://curl.se/windows/{\n #}
+		pause && goto Start))
 	
 rem Проверяем наличие интернета и обновляем программу
-	ping pastebin.com -n 1 -w 1000 |>nul find /i "TTL="|| cls && %ch% {04} Ошибка проверки, нет интернет-соединения.{\n #}&&timeout /t 3 >nul && goto Start
+	ping pastebin.com -n 1 -w 1000 |>nul find /i "TTL="|| %ch% {04} Ошибка проверки, нет интернет-соединения.{\n #}&& timeout /t 3 >nul && goto Start
 	
 	curl -g -k -L -# -o "%SystemDrive%\latestVersion.bat" "https://pastebin.com/raw/dnENFgmC" >nul 2>&1
 	call "%SystemDrive%\latestVersion.bat"
 	if "%Version%" lss "%latestVersion%" (cls) else (
-	cls
-	%ch% {0a} Обновлений не найдено. У Вас актуальная версия {0f}- {0e}%Version%{\n #}{\n #}
-	%ch% {08} Для возврата в главное меню нажмите любую клавишу.{\n #}
-	pause >nul
-	goto Start)
+		%ch% {0a} Обновлений не найдено. У Вас актуальная версия {0f}- {0e}%Version%{\n #}{\n #}
+		%ch% {08} Для возврата в главное меню нажмите любую клавишу.{\n #}
+		pause >nul
+		goto Start
+	)
 	
 	%ch%  {08} Найдена {0e}новая версия. {08}Нажмите любую клавишу чтобы обновить программу.{\n #}
     pause>nul
     curl -g -k -L -# -o "%~dp0DefenderKillerNew.bat" "https://github.com/oatmealcookiec/MyProgramm/releases/latest/download/DefenderKiller.bat" >nul 2>&1
-    if exist "%~dp0DefenderKillerNew.bat" (cls) else (%ch% {\n #} {0c} Новая версия не была скачана.{\n #}&& pause && cls && goto Start)
-    start "" NSudoLC -U:%ArgNsudo% -ShowWindowMode:Hide cmd /c "timeout /t 1 && del /q "%~f0" && timeout /t 2 && ren "%~dp0DefenderKillerNew.bat" DefenderKiller.bat && start "" "%~dp0DefenderKiller.bat""
+    if not exist "%~dp0DefenderKillerNew.bat" %ch% {\n #} {0c} Новая версия не была скачана.{\n #}&& pause && goto Start
+    start "" NSudoLC -U:%ArgNsudo% -ShowWindowMode:Hide cmd /c "timeout /t 2 && del /q "%~f0" && timeout /t 2 && ren "%~dp0DefenderKillerNew.bat" DefenderKiller.bat && start "" "%~dp0DefenderKiller.bat""
     exit
 	
 rem ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-rem 															Код для создания резервной копии защитника
+rem Код для создания резервной копии защитника
 rem Добавляем в исключения [в самом методе есть проверка на повторное добавление], распаковываем Unlocker, разблокируем папки, создаём резервную копию папок и файлов защитника.
 rem Функция CheckStateBackup проверяет существуют ли папки или файлы после копирования главной папки защитника.
 
 :CreateBackupDefender
 	if exist "%SystemDrive%\WDefenderBackup" rd /s /q "%SystemDrive%\WDefenderBackup"
-	call :AddExclusion
 	
 	set "PathServDrive=%SystemDrive%\WDefenderBackup\ServicesDrivers"
 	set "PathRegedit=%SystemDrive%\WDefenderBackup\RegEdit"
@@ -679,24 +488,22 @@ rem Функция CheckStateBackup проверяет существуют ли папки или файлы после копир
 	md "%PathServDrive%"
 	md "%PathRegedit%"
 	md "%PathCLSID%"
-	
-	NSudoLC -U:P -ShowWindowMode:Hide -Wait UnlockerUnpack.bat
+
+	%ch%    {09} Создаём резервную копию{\n #}
+	REM NSudoLC -U:P -ShowWindowMode:Hide -Wait UnlockerUnpack.bat
 	Unlocker /unlock "%AllUsersProfile%\Microsoft\Windows Defender" "%SystemDrive%\Program Files\Windows Defender" "%SystemDrive%\Program Files (x86)\Windows Defender"
 
-rem Начало создания резервной копии. Папки из ProgramData
-	%ch%    {02} Создаём резервную копию папок из %AllUsersProfile%{\n #}
 	for %%d in ("Windows Defender" "Windows Defender Advanced Threat Protection" "Windows Security Health" "Storage Health") do (
 		xcopy "%AllUsersProfile%\Microsoft\%%~d" "%SystemDrive%\WDefenderBackup\Folder\ProgramData\Microsoft\%%~d" /s /e /h /y /i >nul 2>&1
 	)
 rem Проверка после создания копии
+	timeout /t 2 /nobreak >nul
 	call :CheckStateBackup
 
-	%ch%    {02} Создаём резервную копию папок из %ProgramFiles% и %ProgramFiles(x86)%{\n #}
 rem ProgramFiles / x86
 	for %%d in ("Windows Defender" "Windows Defender Sleep" "Windows Defender Advanced Threat Protection" "Windows Security" "PCHealthCheck" "Microsoft Update Health Tools") do xcopy "%SystemDrive%\Program Files\%%~d" "%SystemDrive%\WDefenderBackup\Folder\Program Files\%%~d" /s /e /h /y /i >nul 2>&1
 	for %%d in ("Windows Defender" "Windows Defender Advanced Threat Protection") do xcopy "%SystemDrive%\Program Files (x86)\%%~d" "%SystemDrive%\WDefenderBackup\Folder\Program Files (x86)\%%~d" /s /e /h /y /i >nul 2>&1
-		
-	%ch%    {02} Создаём резервную копию папок из System32 и SysWOW64{\n #}
+
 (
 rem Windows - System32
     xcopy /s /e /h /y /i "%SystemRoot%\security\database" "%SystemDrive%\WDefenderBackup\Folder\Windows\security\database"
@@ -717,7 +524,6 @@ rem SysWOW64
     xcopy /s /e /h /y /i "%SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\Modules\DefenderPerformance" "%SystemDrive%\WDefenderBackup\Folder\SysWOW64\WindowsPowerShell\v1.0\Modules\DefenderPerformance"
 ) >nul 2>&1
 
-	%ch%    {02} Создаём резервную копию файлов из System32 и SysWOW64{\n #}
 (
 rem Копирование файлов из System32	/ SysWow64
 	for %%f in (SecurityHealthService.exe SecurityHealthSystray.exe SecurityHealthHost.exe SecurityHealthAgent.dll SecurityHealthSSO.dll SecurityHealthProxyStub.dll smartscreen.dll wscisvif.dll wscproxystub.dll smartscreenps.dll wscapi.dll windowsdefenderapplicationguardcsp.dll wscsvc.dll SecurityHealthCore.dll SecurityHealthSsoUdk.dll SecurityHealthUdk.dll smartscreen.exe) do (
@@ -730,15 +536,14 @@ rem Копирование файлов из System32	/ SysWow64
 	copy /y "%SystemRoot%\Containers\serviced\WindowsDefenderApplicationGuard.wim" "%SystemDrive%\WDefenderBackup\Files\Windows\Containers\serviced"
 ) >nul 2>&1
 
-	%ch%    {02} Создаём резервную копию папок из WinSxS{\n #}
 	for /d %%i in ("%SystemRoot%\WinSxS\*windows-defender*") do xcopy "%%i" "%SystemDrive%\WDefenderBackup\Folder\WinSxS\%%~nxi" /I /E /H /Y >nul 2>&1
 	for /d %%i in ("%SystemRoot%\WinSxS\*windows-senseclient-service*") do xcopy "%%i" "%SystemDrive%\WDefenderBackup\Folder\WinSxS\%%~nxi" /I /E /H /Y >nul 2>&1
 	for /d %%i in ("%SystemRoot%\WinSxS\*windows-dynamic-image*") do xcopy "%%i" "%SystemDrive%\WDefenderBackup\Folder\WinSxS\%%~nxi" /I /E /H /Y >nul 2>&1
 
 rem Службы / Драйвера
-	for %%x in (SecurityHealthService Sense WdNisSvc WinDefend wscsvc SgrmBroker webthreatdefsvc webthreatdefusersvc WdNisDrv WdBoot WdFilter SgrmAgent wtd MsSecWfp MsSecFlt MsSecCore MDCoreSvc) do reg export "HKLM\System\CurrentControlSet\Services\%%x" "%PathServDrive%\%%x.reg" >nul 2>&1
-	
-(	
+	for %%x in (SecurityHealthService Sense WdNisSvc WinDefend wscsvc SgrmBroker webthreatdefsvc webthreatdefusersvc WdNisDrv WdBoot WdFilter SgrmAgent MsSecWfp MsSecFlt MsSecCore MDCoreSvc) do reg export "HKLM\System\CurrentControlSet\Services\%%x" "%PathServDrive%\%%x.reg" >nul 2>&1
+
+(
 rem Экспорт веток реестра
 	reg export "HKCR\*\shellex\ContextMenuHandlers\EPP" "%PathRegedit%\1.reg"
 	reg export "HKCR\Directory\shellex\ContextMenuHandlers\EPP" "%PathRegedit%\2.reg"
@@ -765,37 +570,20 @@ rem Экспорт CLSID по причине их удаления в очистке реестра при использовании тви
 	set "counter=1"
 	for %%i in (08728914-3F57-4D52-9E31-49DAECA5A80A 10964DDD-6A53-4C60-917F-7B5723014344 17072F7B-9ABE-4A74-A261-1EB76B55107A 195B4D07-3DE2-4744-BBF2-D90121AE785B 2781761E-28E0-4109-99FE-B9D127C57AFE 2981a36e-f22d-11e5-9ce9-5e5517507c66 2DCD7FDB-8809-48E4-8E4F-3157C57CF987 2EF44DE8-80C9-42D9-8541-F40EF0862FA3 3213CD15-4DF2-415F-83F2-9FC58F3AEB3A 3522D7AF-4617-4237-AAD8-5860231FC9BA 361290c0-cb1b-49ae-9f3e-ba1cbe5dab35 36383E77-35C2-4B45-8277-329E4BEDF47F 3886CA90-AB09-49D1-A047-7A62D096D275 3CD3CA1E-2232-4BBF-A733-18B700409DA0 45F2C32F-ED16-4C94-8493-D72EF93A051B 4DB116D1-9B24-4DFC-946B-BFE03E852002 5ffab5c8-9a36-4b65-9fc6-fb69f451f99c 6CED0DAA-4CDE-49C9-BA3A-AE163DC3D7AF 6D40A6F9-3D32-4FCB-8A86-BE992E03DC76 7E66DBEF-2474-4E82-919B-9A855F4C2FE8 82345212-6ACA-4B38-8CD7-BF9DE8ED07BD 849F5497-5C61-4023-8E10-A28F1A8C6A70 88866959-07B0-4ED8-8EF5-54BC7443D28C 8a696d12-576b-422e-9712-01b9dd84b446 8C38232E-3A45-4A27-92B0-1A16A975F669 8E67B5C5-BAD3-4263-9F80-F769D50884F7 A2D75874-6750-4931-94C1-C99D3BC9D0C7 a463fcb9-6b1c-4e0d-a80b-a2ca7999e25d A7C452EF-8E9F-42EB-9F2B-245613CA0DC9 C8DFF91D-B243-4797-BAE6-C461B65EDED3 D5F7E36B-5B38-445D-A50F-439B8FCBB87A DACA056E-216A-4FD1-84A6-C306A017ECEC DBF393FC-230C-46CC-8A85-E9C599A81EFB E041C90B-68BA-42C9-991E-477B73A75C90 E476E4C0-409C-43CD-BBC0-5905B4138494 F2102C37-90C3-450C-B3F6-92BE1693BDF2 F80FC80C-6A04-46FB-8555-D769E334E9FC FEEE9C23-C4E2-4A34-8C73-FE8F9786C8B4) do (
 		reg export "HKCR\CLSID\{%%i}" "%PathCLSID%\!counter!.reg" >nul 2>&1
-		set /a counter+=1)
+		set /a counter+=1
+	)
 
 rem Экспорт CLSID из WOW6432Node
 	for %%i in (17072F7B-9ABE-4A74-A261-1EB76B55107A 2781761E-28E0-4109-99FE-B9D127C57AFE 2981a36e-f22d-11e5-9ce9-5e5517507c66 7E66DBEF-2474-4E82-919B-9A855F4C2FE8 8C38232E-3A45-4A27-92B0-1A16A975F669 D5F7E36B-5B38-445D-A50F-439B8FCBB87A F2102C37-90C3-450C-B3F6-92BE1693BDF2 F80FC80C-6A04-46FB-8555-D769E334E9FC) do (
 		reg export "HKCR\WOW6432Node\CLSID\{%%i}" "%PathCLSID%\W64!counter!.reg" >nul 2>&1
-		set /a counter+=1)
+		set /a counter+=1
+	)
 
 	reg export "HKCR\windowsdefender" "%PathCLSID%\windowsdefender.reg" >nul 2>&1
 	reg export "HKCR\WdMam" "%PathCLSID%\WdMam.reg" >nul 2>&1
-	
-	%ch%    {08} Резервная копия создана в {09}%SystemDrive%\WDefenderBackup{\n #}{\n #}
-	exit /b
 
-:CheckStateBackup
-rem Функция проверки после копирования главной папки, есть ли в ней файлы или папки и вывод версии Windows
-		set "NumberWin="
-		for /f "tokens=4 delims=[] " %%v in ('ver') do set "NumberWin=%%v"
-		timeout /t 2 /nobreak >nul
-		
-	dir /b "%SystemDrive%\WDefenderBackup\Folder\ProgramData\Microsoft\Windows Defender" | findstr /r "^" >nul && (
-		exit /b
-	) || (
-		%ch% {04} Папку "%AllUsersProfile%\Microsoft\Windows Defender" скопировать не удалось{\n #}
-		%ch% {08} Ваша версия Windows - {03}%NumberWin%{\n #}
-		%ch% {08} Попробуйте отключить функцию защита от подделки или перезагрузите ПК{\n #}
-		%ch% {08} Если данная ошибка остается после данных манипуляций - сообщите на форум{\n #}
-		%ch% {08} Для возврата в главное меню нажмите любую клавишу{\n #}
-		pause
-		rd /s /q "%SystemDrive%\WDefenderBackup" >nul 2>&1
-		goto Start
-	)
+	%ch%    {08} Копия создана в %SystemDrive%\WDefenderBackup{\n #}{\n #}
+	exit /b
 
 :RestoreDefender
 rem Для корректного отображения диалогового окна, т.к. программа запущена от TI
@@ -826,90 +614,139 @@ rem Выбор папки и проверка выбранной папки на корректность резервной копии
 	xcopy "Folder\Windows\*" "%SystemRoot%\" /E /H /K /Y
 	xcopy "Folder\WinSxS\*" "%SystemRoot%\WinSxS\" /E /H /K /Y
 
-rem Восстановление реестра/служб, драйверов, CLSID, удалённых с помощью твикеров во время очистки ...
+	if exist "%SystemRoot%\System32\smartscreen_disabled.exe" ren "%SystemRoot%\System32\smartscreen_disabled.exe" "smartscreen.exe"
+
 	for %%f in ("RegEdit\*.reg") do reg import "%%f"
 	for %%f in ("ServicesDrivers\*.reg") do reg import "%%f"
 	for %%f in ("CLSID\*.reg") do reg import "%%f"
 
-rem Восстановление SmartScreen.exe
-	if exist "%SystemRoot%\System32\smartscreen_disabled.exe" rename "%SystemRoot%\System32\smartscreen_disabled.exe" "smartscreen.exe"
-
-rem Удаляем раздел по которому проверяется создана ли резервная копия. Теперь SysApps будут удаляться.
-	reg delete "HKLM\Software\DefenderKiller" /f
-
-rem Очищаем все добавленные ранее пути в исключения защитника
 	reg delete "HKLM\Software\Microsoft\Windows Defender\Exclusions\Paths" /f
-	
-rem Восстановление параметров реестра, удаление лишних ключей
 	reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "SmartScreenEnabled" /f
 	reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.SecurityAndMaintenance" /f
 	reg delete "HKLM\Software\Policies\Microsoft\MRT" /f
-	
+rem Удаляем раздел по которому проверяется создана ли резервная копия
+	reg delete "HKLM\Software\DefenderKiller" /f
+
 ) >nul 2>&1
 
 	popd
 	
 	NSudoLC -U:%ArgNsudo% -ShowWindowMode:Hide cmd.exe /c reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\AppHost" /v "EnableWebContentEvaluation" /f
-
 	NSudoLC -U:%ArgNsudo% -ShowWindowMode:Hide cmd.exe /c reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.SecurityAndMaintenance" /f
 	
-	call :RestoreGP
-	timeout /t 1 /nobreak >nul
-	call :RestoreGP
+	%ch% {0f} Добавить все диски в исключения защитника?{\n #}
+	%ch% {\n} Требуется, чтобы после восстановления защитник не удалил Ваши файлы{\n #}
+	%ch% {08} 1. {0a}Добавить в исключения{\n #}
+	%ch% {08} 2. Отмена{\n #}
+	choice /c 12 /n /m " "
+	if "%errorlevel%"=="1" call :AddExclusionRestore
+	if "%errorlevel%"=="2" %ch% {08} Вы пропустили добавление в исключения{\n #}
+
 	nhmb "Требуется перезапуск ПК" "DK" "Information|Ok"
 	goto Start
 
 :Catalogs
-	%ch% {03}Основные 2 папки{\n #}
-	if not exist "%SystemDrive%\Program Files\Windows Defender" (%ch% {02} %SystemDrive%\Program Files\Windows Defender {08}- основная папка защитника 1{\n #}) else (%ch% {04} %SystemDrive%\Program Files\Windows Defender{08} - основная папка защитника 1{\n #})
-	if not exist "%AllUsersProfile%\Microsoft\Windows Defender" (%ch% {02} %AllUsersProfile%\Microsoft\Windows Defender {08}- основная папка защитника 2{\n #}) else (%ch% {04} %AllUsersProfile%\Microsoft\Windows Defender{08} - основная папка защитника 2{\n #})
-	echo.
+	for /l %%i in (0,1,17) do set "Folder%%i="
+	for /l %%i in (1,1,18) do set "File%%i="
+
+rem Папки
+	if exist "%SystemRoot%\System32\Tasks\Microsoft\Windows\Windows Defender" (set "Folder0=0c") else (set "Folder0=0a")
+	
+	if exist "%SystemRoot%\System32\HealthAttestationClient" (set "Folder1=0c") else (set "Folder1=0a")
+	if exist "%SystemRoot%\System32\SecurityHealth" (set "Folder2=0c") else (set "Folder2=0a")
+	if exist "%SystemRoot%\System32\WebThreatDefSvc" (set "Folder3=0c") else (set "Folder3=0a")
+	if exist "%SystemRoot%\System32\Sgrm" (set "Folder4=0c") else (set "Folder4=0a")
+	if exist "%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\Defender" (set "Folder5=0c") else (set "Folder5=0a")
+	if exist "%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\DefenderPerformance" (set "Folder6=0c") else (set "Folder6=0a")
+	if exist "%SystemRoot%\System32\Tasks_Migrated\Microsoft\Windows\Windows Defender" (set "Folder7=0c") else (set "Folder7=0a")
+	if exist "%ProgramFiles%\Windows Defender Sleep" (set "Folder8=0c") else (set "Folder8=0a")
+	if exist "%ProgramFiles%\Windows Defender Advanced Threat Protection" (set "Folder9=0c") else (set "Folder9=0a")
+	if exist "%ProgramFiles%\Windows Security" (set "Folder10=0c") else (set "Folder10=0a")
+	if exist "%ProgramFiles%\PCHealthCheck" (set "Folder11=0c") else (set "Folder11=0a")
+	if exist "%ProgramFiles%\Microsoft Update Health Tools" (set "Folder12=0c") else (set "Folder12=0a")
+	if exist "%ProgramFiles(x86)%\Windows Defender" (set "Folder13=0c") else (set "Folder13=0a")
+	if exist "%ProgramFiles(x86)%\Windows Defender Advanced Threat Protection" (set "Folder14=0c") else (set "Folder14=0a")
+	if exist "%AllUsersProfile%\Microsoft\Windows Defender Advanced Threat Protection" (set "Folder15=0c") else (set "Folder15=0a")
+	if exist "%AllUsersProfile%\Microsoft\Windows Security Health" (set "Folder16=0c") else (set "Folder16=0a")
+	if exist "%AllUsersProfile%\Microsoft\Storage Health" (set "Folder17=0c") else (set "Folder17=0a")
+
+rem Файлы
+	if exist "%SystemRoot%\Containers\WindowsDefenderApplicationGuard.wim" (set "File1=04") else (set "File1=0a")
+	if exist "%SystemRoot%\Containers\serviced\WindowsDefenderApplicationGuard.wim" (set "File2=04") else (set "File2=0a")
+	if exist "%SystemRoot%\System32\SecurityHealthService.exe" (set "File3=04") else (set "File3=0a")
+	if exist "%SystemRoot%\System32\SecurityHealthSystray.exe" (set "File4=04") else (set "File4=0a")
+	if exist "%SystemRoot%\System32\SecurityHealthHost.exe" (set "File5=04") else (set "File5=0a")
+	if exist "%SystemRoot%\System32\SecurityHealthAgent.dll" (set "File6=04") else (set "File6=0a")
+	if exist "%SystemRoot%\System32\SecurityHealthSSO.dll" (set "File7=04") else (set "File7=0a")
+	if exist "%SystemRoot%\System32\SecurityHealthProxyStub.dll" (set "File8=04") else (set "File8=0a")
+	if exist "%SystemRoot%\System32\smartscreen.dll" (set "File9=04") else (set "File9=0a")
+	if exist "%SystemRoot%\System32\wscisvif.dll" (set "File10=04") else (set "File10=0a")
+	if exist "%SystemRoot%\System32\wscproxystub.dll" (set "File11=04") else (set "File11=0a")
+	if exist "%SystemRoot%\System32\smartscreenps.dll" (set "File12=04") else (set "File12=0a")
+	if exist "%SystemRoot%\System32\wscapi.dll" (set "File13=04") else (set "File13=0a")
+	if exist "%SystemRoot%\System32\windowsdefenderapplicationguardcsp.dll" (set "File14=04") else (set "File14=0a")
+	if exist "%SystemRoot%\System32\wscsvc.dll" (set "File15=04") else (set "File15=0a")
+	if exist "%SystemRoot%\System32\SecurityHealthCore.dll" (set "File16=04") else (set "File16=0a")
+	if exist "%SystemRoot%\System32\SecurityHealthSsoUdk.dll" (set "File17=04") else (set "File17=0a")
+	if exist "%SystemRoot%\System32\SecurityHealthUdk.dll" (set "File18=04") else (set "File18=0a")
+	
 	%ch% {09}Папки в %SystemRoot%\System32{\n #}
-	if not exist "%SystemRoot%\System32\HealthAttestationClient" (%ch% {0a} %SystemRoot%\System32\HealthAttestationClient{\n #}) else (%ch%  {0c}%SystemRoot%\System32\HealthAttestationClient{\n #})
-	if not exist "%SystemRoot%\System32\SecurityHealth" (%ch% {0a} %SystemRoot%\System32\SecurityHealth{\n #}) else (%ch%  {0c}%SystemRoot%\System32\SecurityHealth{\n #})
-	if not exist "%SystemRoot%\System32\WebThreatDefSvc" (%ch% {0a} %SystemRoot%\System32\WebThreatDefSvc{\n #}) else (%ch%  {0c}%SystemRoot%\System32\WebThreatDefSvc{\n #})
-	if not exist "%SystemRoot%\System32\Sgrm" (%ch% {0a} %SystemRoot%\System32\Sgrm{\n #}) else (%ch%  {0c}%SystemRoot%\System32\Sgrm{\n #})
-	if not exist "%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\Defender" (%ch% {0a} %SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\Defender{\n #}) else (%ch%  {0c}%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\Defender{\n #})
-	if not exist "%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\DefenderPerformance" (%ch% {0a} %SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\DefenderPerformance{\n #}) else (%ch%  {0c}%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\DefenderPerformance{\n #})
-	if not exist "%SystemRoot%\System32\Tasks_Migrated\Microsoft\Windows\Windows Defender" (%ch% {0a} %SystemRoot%\System32\Tasks_Migrated\Microsoft\Windows\Windows Defender{\n #}) else (%ch%  {0c}%SystemRoot%\System32\Tasks_Migrated\Microsoft\Windows\Windows Defender{\n #})
-	echo.
-	%ch% {09}Папки в C:\Program Files{\n #}
-	if not exist "%SystemDrive%\Program Files\Windows Defender Sleep" (%ch% {0a} C:\Program Files\Windows Defender Sleep {\n #}) else (%ch%  {4f}C:\Program Files\Windows Defender Sleep{\n #})
-	if not exist "%SystemDrive%\Program Files\Windows Defender Advanced Threat Protection" (%ch% {0a} C:\Program Files\Windows Defender Advanced Threat Protection{\n #}) else (%ch%  {0c}C:\Program Files\Windows Defender Advanced Threat Protection{\n #})
-	if not exist "%SystemDrive%\Program Files\Windows Security" (%ch% {0a} C:\Program Files\Windows Security{\n #}) else (%ch%  {0c}C:\Program Files\Windows Security{\n #})
-	if not exist "%SystemDrive%\Program Files\PCHealthCheck" (%ch% {0a} C:\Program Files\PCHealthCheck{\n #}) else (%ch%  {0c}C:\Program Files\PCHealthCheck{\n #})
-	if not exist "%SystemDrive%\Program Files\Microsoft Update Health Tools" (%ch% {0a} C:\Program Files\Microsoft Update Health Tools{\n #}) else (%ch%  {0c}C:\Program Files\Microsoft Update Health Tools{\n #})
-	echo.
-	%ch% {09}Папки в C:\Program Files (^x86^){\n #}
-	if not exist "%ProgramFiles(x86)%\Windows Defender" (%ch% {0a} C:\Program Files (^x86^)\Windows Defender{\n #}) else (%ch%  {0c}C:\Program Files (^x86^)\Windows Defender{\n #})
-	if not exist "%ProgramFiles(x86)%\Windows Defender Advanced Threat Protection" (%ch% {0a} C:\Program Files (^x86^)\Windows Defender Advanced Threat Protection{\n #}) else (%ch%  {0c}C:\Program Files (^x86^)\Windows Defender Advanced Threat Protection{\n #})
-	echo.
-	%ch% {09}Папки в C:\ProgramData{\n #}
-	if not exist "%AllUsersProfile%\Microsoft\Windows Defender Advanced Threat Protection" (%ch% {0a} C:\ProgramData\Microsoft\Windows Defender Advanced Threat Protection{\n #}) else (%ch%  {0c}C:\ProgramData\Microsoft\Windows Defender Advanced Threat Protection{\n #})
-	if not exist "%AllUsersProfile%\Microsoft\Windows Security Health" (%ch% {0a} C:\ProgramData\Microsoft\Windows Security Health{\n #}) else (%ch%  {0c}C:\ProgramData\Microsoft\Windows Security Health{\n #})
-	if not exist "%AllUsersProfile%\Microsoft\Storage Health" (%ch% {0a} C:\ProgramData\Microsoft\Storage Health{\n #}) else (%ch%  {0c}C:\ProgramData\Microsoft\Storage Health{\n #})
-	echo.
-	%ch% {09}Папка задач планировщика защитника{\n #}
-	if not exist "%SystemRoot%\System32\Tasks\Microsoft\Windows\Windows Defender" (%ch% {0a} C:\Windows\System32\Tasks\Microsoft\Windows\Windows Defender{\n #}) else (%ch%  {0c}C:\Windows\System32\Tasks\Microsoft\Windows\Windows Defender{\n #})
-	echo.		
-	%ch% {09}Остальные файлы{\n #}
-	if not exist "%SystemRoot%\Containers\WindowsDefenderApplicationGuard.wim" (%ch% {0a} C:\Windows\Containers\WindowsDefenderApplicationGuard.wim{\n #}) else (%ch%  {0c}C:\Windows\Containers\WindowsDefenderApplicationGuard.wim{\n #})
-	if not exist "%SystemRoot%\Containers\serviced\WindowsDefenderApplicationGuard.wim" (%ch% {0a} C:\Windows\Containers\serviced\WindowsDefenderApplicationGuard.wim{\n #}) else (%ch%  {0c}C:\Windows\Containers\serviced\WindowsDefenderApplicationGuard.wim{\n #})
-	if not exist "%SystemRoot%\System32\SecurityHealthService.exe" (%ch% {02} SecurityHealthService.exe{#} ^| ) else (%ch% {0c} SecurityHealthService.exe {#}^| )
-	if not exist "%SystemRoot%\System32\SecurityHealthSystray.exe" (%ch% {02}SecurityHealthSystray.exe{#} ^| ) else (%ch% {0c}SecurityHealthSystray.exe {#}^| )
-	if not exist "%SystemRoot%\System32\SecurityHealthHost.exe" (%ch% {02}SecurityHealthHost.exe{\n #}) else (%ch% {0c}SecurityHealthHost.exe{\n #})
-	if not exist "%SystemRoot%\System32\SecurityHealthAgent.dll" (%ch% {02} SecurityHealthAgent.dll{#} ^| ) else (%ch% {0c} SecurityHealthAgent.dll{#} ^| )
-	if not exist "%SystemRoot%\System32\SecurityHealthSSO.dll" (%ch% {02}SecurityHealthSSO.dll{#} ^| ) else (%ch% {0c}SecurityHealthSSO.dll{#} ^| )
-	if not exist "%SystemRoot%\System32\SecurityHealthProxyStub.dll" (%ch% {02}SecurityHealthProxyStub.dll{\n #}) else (%ch% {0c}SecurityHealthProxyStub.dll{\n #})
-	if not exist "%SystemRoot%\System32\smartscreen.dll" (%ch% {02} smartscreen.dll{#} ^| ) else (%ch% {0c} smartscreen.dll{#} ^| )
-	if not exist "%SystemRoot%\System32\wscisvif.dll" (%ch% {02}wscisvif.dll{#} ^| ) else (%ch% {0c}wscisvif.dll{#} ^| )
-	if not exist "%SystemRoot%\System32\wscproxystub.dll" (%ch% {02}wscproxystub.dll{#} ^| ) else (%ch% {0c}wscproxystub.dll{#} ^| )
-	if not exist "%SystemRoot%\System32\smartscreenps.dll" (%ch% {02}smartscreenps.dll{\n #}) else (%ch% {0c}smartscreenps.dll{\n #})
-	if not exist "%SystemRoot%\System32\wscapi.dll" (%ch% {02} wscapi.dll{#} ^| ) else (%ch% {0c} wscapi.dll{#} ^| )
-	if not exist "%SystemRoot%\System32\windowsdefenderapplicationguardcsp.dll" (%ch% {02} windowsdefenderapplicationguardcsp.dll{#} ^| ) else (%ch% {0c} windowsdefenderapplicationguardcsp.dll{#} ^| )
-	if not exist "%SystemRoot%\System32\wscsvc.dll" (%ch% {02}wscsvc.dll{\n #}) else (%ch% {0c}wscsvc.dll{\n #})
-	if not exist "%SystemRoot%\System32\SecurityHealthCore.dll"  (%ch% {02} SecurityHealthCore.dll{\n #}) else (%ch% {0c} SecurityHealthCore.dll{\n #})
-	if not exist "%SystemRoot%\System32\SecurityHealthSsoUdk.dll"  (%ch% {02} SecurityHealthSsoUdk.dll{\n #}) else (%ch% {0c} SecurityHealthSsoUdk.dll{\n #})
-	if not exist "%SystemRoot%\System32\SecurityHealthUdk.dll" (%ch% {02} SecurityHealthUdk.dll{\n #}) else (%ch% {0c} SecurityHealthUdk.dll{\n #})
-	if not exist "%SystemRoot%\System32\SecurityHealthAgent.dll"  (%ch% {02} SecurityHealthAgent.dll{\n #}) else (%ch% {0c} SecurityHealthAgent.dll{\n #})
+	%ch% {%Folder0%} %SystemRoot%\System32\Tasks\Microsoft\Windows\Windows Defender{\n #}
+
+	%ch% {%Folder1%} %SystemRoot%\System32\HealthAttestationClient{\n #}
+	%ch% {%Folder2%} %SystemRoot%\System32\SecurityHealth{\n #}
+	%ch% {%Folder3%} %SystemRoot%\System32\WebThreatDefSvc{\n #}
+	%ch% {%Folder4%} %SystemRoot%\System32\Sgrm{\n #}
+	%ch% {%Folder5%} %SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\Defender{\n #}
+	%ch% {%Folder6%} %SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\DefenderPerformance{\n #}
+	%ch% {%Folder7%} %SystemRoot%\System32\Tasks_Migrated\Microsoft\Windows\Windows Defender{\n #}
+
+	%ch% {\n}{09}Папки в %ProgramFiles%{\n #}
+	%ch% {%Folder8%} %ProgramFiles%\Windows Defender Sleep{\n #}
+	%ch% {%Folder9%} %ProgramFiles%\Windows Defender Advanced Threat Protection{\n #}
+	%ch% {%Folder10%} %ProgramFiles%\Windows Security{\n #}
+	%ch% {%Folder11%} %ProgramFiles%\PCHealthCheck{\n #}
+	%ch% {%Folder12%} %ProgramFiles%\Microsoft Update Health Tools{\n #}
+
+	%ch% {\n}{09}Папки в %ProgramFiles(x86)%{\n #}
+	%ch% {%Folder13%} %ProgramFiles(x86)%\Windows Defender{\n #}
+	%ch% {%Folder14%} %ProgramFiles(x86)%\Windows Defender Advanced Threat Protection{\n #}
+
+	%ch% {\n}{09}Папки в %AllUsersProfile%{\n #}
+	%ch% {%Folder15%} %AllUsersProfile%\Microsoft\Windows Defender Advanced Threat Protection{\n #}
+	%ch% {%Folder16%} %AllUsersProfile%\Microsoft\Windows Security Health{\n #}
+	%ch% {%Folder17%} %AllUsersProfile%\Microsoft\Storage Health{\n #}
+
+	%ch% {\n}{09}Файлы{\n #}
+	%ch% {%File1%} %SystemRoot%\Containers\WindowsDefenderApplicationGuard.wim{\n #}
+	%ch% {%File2%} %SystemRoot%\Containers\serviced\WindowsDefenderApplicationGuard.wim{\n #}
+	%ch% {%File3%} %SystemRoot%\System32\SecurityHealthService.exe{\n #}
+	%ch% {%File4%} %SystemRoot%\System32\SecurityHealthSystray.exe{\n #}
+	%ch% {%File5%} %SystemRoot%\System32\SecurityHealthHost.exe{\n #}
+	%ch% {%File6%} %SystemRoot%\System32\SecurityHealthAgent.dll{\n #}
+	%ch% {%File7%} %SystemRoot%\System32\SecurityHealthSSO.dll{\n #}
+	%ch% {%File8%} %SystemRoot%\System32\SecurityHealthProxyStub.dll{\n #}
+	%ch% {%File9%} %SystemRoot%\System32\smartscreen.dll{\n #}
+	%ch% {%File10%} %SystemRoot%\System32\wscisvif.dll{\n #}
+	%ch% {%File11%} %SystemRoot%\System32\wscproxystub.dll{\n #}
+	%ch% {%File12%} %SystemRoot%\System32\smartscreenps.dll{\n #}
+	%ch% {%File13%} %SystemRoot%\System32\wscapi.dll{\n #}
+	%ch% {%File14%} %SystemRoot%\System32\windowsdefenderapplicationguardcsp.dll{\n #}
+	%ch% {%File15%} %SystemRoot%\System32\wscsvc.dll{\n #}
+	%ch% {%File16%} %SystemRoot%\System32\SecurityHealthCore.dll{\n #}
+	%ch% {%File17%} %SystemRoot%\System32\SecurityHealthSsoUdk.dll{\n #}
+	%ch% {%File18%} %SystemRoot%\System32\SecurityHealthUdk.dll{\n #}
+
 	pause>nul && goto Start
+
+:CheckStateBackup
+rem Функция проверки после копирования главной папки, есть ли в ней файлы или папки и вывод версии Windows
+		dir /b "%SystemDrive%\WDefenderBackup\Folder\ProgramData\Microsoft\Windows Defender" | findstr /r "^" >nul && (
+		exit /b
+	) || (
+		%ch% {04} Папку "%AllUsersProfile%\Microsoft\Windows Defender" скопировать не удалось{\n #}
+		%ch% {08} Ваша версия Windows - {03}%NumberWin%{\n #}
+		pause
+		rd /s /q "%SystemDrive%\WDefenderBackup" >nul 2>&1
+		goto Start
+	)
